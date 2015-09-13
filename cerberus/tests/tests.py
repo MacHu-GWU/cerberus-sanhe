@@ -3,12 +3,13 @@ import sys
 from datetime import datetime
 from random import choice
 from string import ascii_lowercase
-from . import TestBase, TestCase
-from ..cerberus import errors, SchemaError, Validator
+from unittest import TestCase
+from . import TestBase
+from ..cerberus import Validator, errors, SchemaError
 
 
 class TestTestBase(TestBase):
-    def _test_that_test_fails(self, test, *args):
+    def run_test_to_fail(self, test, *args):
         try:
             test(*args)
         except AssertionError as e:  # noqa
@@ -17,44 +18,42 @@ class TestTestBase(TestBase):
             raise AssertionError("test didn't fail")
 
     def test_fail(self):
-        self._test_that_test_fails(self.assertFail, {'an_integer': 60})
+        self.run_test_to_fail(self.assertFail, {'an_integer': 60})
 
     def test_success(self):
-        self._test_that_test_fails(self.assertSuccess, {'an_integer': 110})
+        self.run_test_to_fail(self.assertSuccess, {'an_integer': 110})
 
 
-class TestValidation(TestBase):
+class TestValidator(TestBase):
+
     def test_empty_schema(self):
         v = Validator()
         self.assertSchemaError(self.document, None, v,
-                               errors.SCHEMA_ERROR_MISSING)
+                               errors.ERROR_SCHEMA_MISSING)
 
     def test_bad_schema_type(self):
         schema = "this string should really be dict"
         try:
             Validator(schema)
         except SchemaError as e:
-            self.assertEqual(str(e),
-                             errors.SCHEMA_ERROR_DEFINITION_TYPE
-                             .format(schema))
+            self.assertEqual(str(e), errors.ERROR_SCHEMA_FORMAT.format(schema))
         else:
             self.fail('SchemaError not raised')
 
         v = Validator()
         self.assertSchemaError(self.document, schema, v,
-                               errors.SCHEMA_ERROR_DEFINITION_TYPE
-                               .format(schema))
+                               errors.ERROR_SCHEMA_FORMAT.format(schema))
 
     def test_bad_schema_type_field(self):
         field = 'foo'
         schema = {field: {'schema': {'bar': {'type': 'string'}}}}
         self.assertSchemaError(self.document, schema, None,
-                               errors.SCHEMA_ERROR_TYPE_TYPE.format(field))
+                               errors.ERROR_SCHEMA_TYPE.format(field))
 
         schema = {field: {'type': 'integer',
                           'schema': {'bar': {'type': 'string'}}}}
         self.assertSchemaError(self.document, schema, None,
-                               errors.SCHEMA_ERROR_TYPE_TYPE.format(field))
+                               errors.ERROR_SCHEMA_TYPE.format(field))
 
     def _check_schema_content_error(self, err_msg, func, *args, **kwargs):
         try:
@@ -66,7 +65,7 @@ class TestValidation(TestBase):
 
     def test_invalid_schema(self):
         schema = {'foo': {'unknown': 'rule'}}
-        err_msg = ' '.join(errors.SCHEMA_ERROR_UNKNOWN_RULE.split()[:2])
+        err_msg = ' '.join(errors.ERROR_UNKNOWN_RULE.split()[:2])
         self._check_schema_content_error(err_msg, Validator, schema)
         v = Validator()
         self._check_schema_content_error(
@@ -87,8 +86,7 @@ class TestValidation(TestBase):
         field = 'name'
         schema = {field: 'this should really be a dict'}
         self.assertSchemaError(self.document, schema, None,
-                               errors.SCHEMA_ERROR_CONSTRAINT_TYPE
-                               .format(field))
+                               errors.ERROR_DEFINITION_FORMAT.format(field))
 
     def test_unknown_field(self):
         field = 'surname'
@@ -100,7 +98,7 @@ class TestValidation(TestBase):
         schema = {field: {'unknown_rule': True, 'type': 'string'}}
         self.assertSchemaError(
             self.document, schema, None,
-            errors.SCHEMA_ERROR_UNKNOWN_RULE.format('unknown_rule', field))
+            errors.ERROR_UNKNOWN_RULE.format('unknown_rule', field))
 
     def test_empty_field_definition(self):
         field = 'name'
@@ -108,8 +106,8 @@ class TestValidation(TestBase):
         self.assertSuccess(self.document, schema)
 
     def test_required_field(self):
-        self.schema.update(self.required_string_extension)
-        self.assertFail({'an_integer': 1}, self.schema)
+        self.assertFail({'an_integer': 1},
+                        self.schema.update(self.required_string_extension))
         self.assertError('a_required_string', errors.ERROR_REQUIRED_FIELD)
 
     def test_nullable_field(self):
@@ -483,11 +481,11 @@ class TestValidation(TestBase):
         v.transparent_schema_rules = False
         self.assertSchemaError(
             document, schema, v,
-            errors.SCHEMA_ERROR_UNKNOWN_RULE.format('unknown_rule', field)
+            errors.ERROR_UNKNOWN_RULE.format('unknown_rule', field)
         )
         self.assertSchemaError(
             document, schema, None,
-            errors.SCHEMA_ERROR_UNKNOWN_RULE.format('unknown_rule', field)
+            errors.ERROR_UNKNOWN_RULE.format('unknown_rule', field)
         )
 
     def test_allow_empty_strings(self):
@@ -749,15 +747,6 @@ class TestValidation(TestBase):
         self.assertFalse(v.validate({'test_field': 'foobar',
                                      'a_dict': {'bar': 'bar'}}))
 
-    def test_dependencies_errors(self):
-        v = Validator({'field1': {'required': False},
-                       'field2': {'required': True,
-                                  'dependencies': {'field1': ['one', 'two']}}})
-        v.validate({'field1': 'three', 'field2': 7})
-        self.assertDictEqual(v.errors,
-                             {'field2': "field 'field1' is required with one "
-                                        "of these values: ['one', 'two']"})
-
     def test_options_passed_to_nested_validators(self):
         schema = {'sub_dict': {'type': 'dict',
                                'schema': {'foo': {'type': 'string'}}}}
@@ -773,16 +762,16 @@ class TestValidation(TestBase):
         """
         class MyValidator(Validator):
             def _validate_root_doc(self, root_doc, field, value):
-                if('sub' not in self.root_document or
-                        len(self.root_document['sub']) != 2):
-                    self._error(field, 'self.context is not the root doc!')
+                if('sub' not in self.document or
+                        len(self.document['sub']) != 2):
+                    self._error(field, 'self.document is not the root doc!')
 
         schema = {
             'sub': {
                 'type': 'list',
-                'root_doc': True,
                 'schema': {
                     'type': 'dict',
+                    'root_doc': True,
                     'schema': {
                         'foo': {
                             'type': 'string',
@@ -812,6 +801,41 @@ class TestValidation(TestBase):
         self.assertError('name', 'must be lowercase', validator=v)
 
         self.assertSuccess({'name': 'itsme', 'age': 2}, validator=v)
+
+    def test_coerce(self):
+        schema = {
+            'amount': {'coerce': int}
+        }
+        v = Validator(schema)
+        v.validate({'amount': '1'})
+        self.assertEqual(v.document['amount'], 1)
+
+    def test_coerce_not_destructive(self):
+        schema = {
+            'amount': {'coerce': int}
+        }
+        v = Validator(schema)
+        doc = {'amount': '1'}
+        v.validate(doc)
+        self.assertNotEqual(id(v.document), id(doc))
+
+    def test_coerce_catches_ValueError(self):
+        schema = {
+            'amount': {'coerce': int}
+        }
+        v = Validator(schema)
+        self.assertFalse(v.validate({'amount': 'not_a_number'}))
+        self.assertError('amount',
+                         errors.ERROR_COERCION_FAILED.format('amount'), v)
+
+    def test_coerce_catches_TypeError(self):
+        schema = {
+            'name': {'coerce': str.lower}
+        }
+        v = Validator(schema)
+        self.assertFalse(v.validate({'name': 1234}))
+        self.assertError('name',
+                         errors.ERROR_COERCION_FAILED.format('name'), v)
 
     def test_validated(self):
         schema = {'property': {'type': 'string'}}
@@ -1040,18 +1064,24 @@ class TestValidation(TestBase):
         document['parts'].append({'product name': "Monitors", 'count': 18})
         document['parts'].append(10)
         # and invalid. numbers are not allowed.
-
-        v = Validator(schema)
-        v.validate(document, update=True)
-        self.assertEqual(
-            v.errors['parts'][3]['definition 0']['product name'],
-            "unknown field")
-        self.assertEqual(
-            v.errors['parts'][3]['definition 1']['product name'],
-            "unknown field")
-        self.assertEqual(
-            v.errors['parts'][4],
-            "must be of dict or string type")
+        try:
+            v = Validator(schema)
+            self.assertTrue(v.validate(document, update=True))
+        except AssertionError as e:  # noqa
+            # should be multiple errors that occured, each schemas errors
+            # should be in the errors dict.  check that they are.
+            self.assertEqual(
+                v.errors['parts'][3]['definition 0']['product name'],
+                "unknown field")
+            self.assertEqual(
+                v.errors['parts'][3]['definition 1']['product name'],
+                "unknown field")
+            self.assertEqual(
+                v.errors['parts'][4],
+                "must be of dict or string type")
+            pass
+        else:
+            raise AssertionError("validation didn't fail")
 
     def test_anyof_2(self):
         # these two schema should be the same
@@ -1077,28 +1107,6 @@ class TestValidation(TestBase):
         self.assertFail(doc, schema1)
         self.assertFail(doc, schema2)
 
-    def test_anyof_type(self):
-        schema = {'anyof_type': {'anyof_type': ['string', 'integer']}}
-        self.assertSuccess({'anyof_type': 'bar'}, schema)
-        self.assertSuccess({'anyof_type': 23}, schema)
-
-    def test_oneof_schema(self):
-        schema = {'oneof_schema': {'type': 'dict',
-                                   'oneof_schema':
-                                       [{'digits': {'type': 'integer',
-                                                    'min': 0, 'max': 99}},
-                                        {'text': {'type': 'string',
-                                                  'regex': '^[0-9]{2}$'}}]}}
-        self.assertSuccess({'oneof_schema': {'digits': 19}}, schema)
-        self.assertSuccess({'oneof_schema': {'text': '84'}}, schema)
-        self.assertFail({'oneof_schema': {'digits': 19, 'text': '84'}}, schema)
-
-    def test_nested_oneof_type(self):
-        schema = {'nested_oneof_type':
-                  {'valueschema': {'oneof_type': ['string', 'integer']}}}
-        self.assertSuccess({'nested_oneof_type': {'foo': 'a'}}, schema)
-        self.assertSuccess({'nested_oneof_type': {'bar': 3}}, schema)
-
     def test_issue_107(self):
         schema = {'info': {'type': 'dict',
                   'schema': {'name': {'type': 'string', 'required': True}}}}
@@ -1109,249 +1117,6 @@ class TestValidation(TestBase):
         self.assertSuccess(document, schema, validator)
 
         self.assertTrue(validator.validate(document))
-
-    def test_dont_type_validate_nulled_values(self):
-        v = self.validator
-        v.validate({'an_integer': None})
-        self.assertDictEqual(v.errors,
-                             {'an_integer': 'null value not allowed'})
-
-    def test_dependencies_error(self):
-        v = self.validator
-        schema = {'field1': {'required': False},
-                  'field2': {'required': True,
-                             'dependencies': {'field1': ['one', 'two']}}}
-        v.validate({'field2': 7}, schema)
-        self.assertDictEqual(v.errors, {'field2': "field 'field1' is required "
-                                                  "with one of these values: "
-                                                  "['one', 'two']"})
-
-    def test_dependencies_on_boolean_field_with_one_value(self):
-        # Bug #138
-        # https://github.com/nicolaiarocci/cerberus/issues/138
-        v = Validator({'deleted': {'type': 'boolean'},
-                       'text': {'dependencies': {'deleted': False}}})
-        try:
-            self.assertTrue(v.validate({'text': 'foo', 'deleted': False}))
-            self.assertFalse(v.validate({'text': 'foo', 'deleted': True}))
-            self.assertFalse(v.validate({'text': 'foo'}))
-        except TypeError as e:
-            if str(e) == "argument of type 'bool' is not iterable":
-                self.fail(' '.join([
-                    "Bug #138 still exists, couldn't use boolean",
-                    "in dependency without putting it in a list.\n",
-                    "'some_field': True vs 'some_field: [True]"]))
-            else:
-                raise
-
-    def test_dependencies_on_boolean_field_with_value_in_list(self):
-        # Bug #138
-        # https://github.com/nicolaiarocci/cerberus/issues/138
-        v = Validator({'deleted': {'type': 'boolean'},
-                       'text': {'dependencies': {'deleted': [False]}}})
-
-        self.assertTrue(v.validate({'text': 'foo', 'deleted': False}))
-        self.assertFalse(v.validate({'text': 'foo', 'deleted': True}))
-        self.assertFalse(v.validate({'text': 'foo'}))
-
-    def test_trail(self):
-        class TrailTester(Validator):
-            def _validate_trail(self, constraint_value, field, value):
-                test_doc = self.root_document
-                for crumb in self.trail:
-                    test_doc = test_doc[crumb]
-                assert test_doc == self.document
-
-        v = TrailTester()
-        schema = {'foo': {'schema': {'bar': {'trail': True}}}}
-        document = {'foo': {'bar': {}}}
-        self.assertSuccess(document, schema, v)
-
-    def test_excludes(self):
-        schema = {'this_field': {'type': 'dict',
-                                 'excludes': 'that_field'},
-                  'that_field': {'type': 'dict'}}
-        document1 = {'this_field': {}}
-        document2 = {'that_field': {}}
-        document3 = {'that_field': {}, 'this_field': {}}
-        self.assertSuccess(document1, schema)
-        self.assertSuccess(document2, schema)
-        self.assertSuccess({}, schema)
-        self.assertFail(document3, schema)
-
-    def test_mutual_excludes(self):
-        schema = {'this_field': {'type': 'dict',
-                                 'excludes': 'that_field'},
-                  'that_field': {'type': 'dict',
-                                 'excludes': 'this_field'}}
-        document1 = {'this_field': {}}
-        document2 = {'that_field': {}}
-        document3 = {'that_field': {}, 'this_field': {}}
-        self.assertSuccess(document1, schema)
-        self.assertSuccess(document2, schema)
-        self.assertSuccess({}, schema)
-        self.assertFail(document3, schema)
-
-    def test_required_excludes(self):
-        schema = {'this_field': {'type': 'dict',
-                                 'excludes': 'that_field',
-                                 'required': True},
-                  'that_field': {'type': 'dict',
-                                 'excludes': 'this_field',
-                                 'required': True}}
-        document1 = {'this_field': {}}
-        document2 = {'that_field': {}}
-        document3 = {'that_field': {}, 'this_field': {}}
-        self.assertSuccess(document1, schema, update=False)
-        self.assertSuccess(document2, schema, update=False)
-        self.assertFail({}, schema)
-        self.assertFail(document3, schema)
-
-    def test_multiples_exclusions(self):
-        schema = {'this_field': {'type': 'dict',
-                                 'excludes': ['that_field', 'bazo_field']},
-                  'that_field': {'type': 'dict',
-                                 'excludes': 'this_field'},
-                  'bazo_field': {'type': 'dict'}}
-        document1 = {'this_field': {}}
-        document2 = {'that_field': {}}
-        document3 = {'this_field': {}, 'that_field': {}}
-        document4 = {'this_field': {}, 'bazo_field': {}}
-        document5 = {'that_field': {}, 'this_field': {}, 'bazo_field': {}}
-        document6 = {'that_field': {}, 'bazo_field': {}}
-        self.assertSuccess(document1, schema)
-        self.assertSuccess(document2, schema)
-        self.assertFail(document3, schema)
-        self.assertFail(document4, schema)
-        self.assertFail(document5, schema)
-        self.assertSuccess(document6, schema)
-
-    def test_bad_excludes_fields(self):
-        schema = {'this_field': {'type': 'dict',
-                                 'excludes': ['that_field', 'bazo_field'],
-                                 'required': True},
-                  'that_field': {'type': 'dict',
-                                 'excludes': 'this_field',
-                                 'required': True}}
-        self.assertValidationError({'that_field': {},
-                                    'this_field': {}}, schema)
-        self.assertDictEqual(self.validator.errors,
-                             {'that_field': errors.ERROR_EXCLUDES_FIELD.format(
-                                 "'this_field'", "that_field"),
-                              'this_field': errors.ERROR_EXCLUDES_FIELD.format(
-                                  "'that_field', 'bazo_field'", "this_field")})
-
-    def test_excludes_hashable(self):
-        self.validator = Validator()
-        schema = {'this_field': {'type': 'dict',
-                                 'excludes': 42,
-                                 'required': True}}
-        self.assertSchemaError({'this_field': {}}, schema)
-
-
-class TestNormalization(TestBase):
-    def test_coerce(self):
-        schema = {
-            'amount': {'coerce': int}
-        }
-        v = Validator(schema)
-        v.validate({'amount': '1'})
-        self.assertEqual(v.document['amount'], 1)
-
-    def test_coerce_in_subschema(self):
-        schema = {'thing': {'type': 'dict',
-                            'schema': {'amount': {'coerce': int}}}}
-        v = Validator(schema)
-        self.assertEqual(v.validated({'thing': {'amount': '2'}})
-                                     ['thing']['amount'], 2)  # noqa
-
-    def test_coerce_not_destructive(self):
-        schema = {
-            'amount': {'coerce': int}
-        }
-        v = Validator(schema)
-        doc = {'amount': '1'}
-        v.validate(doc)
-        self.assertNotEqual(id(v.document), id(doc))
-
-    def test_coerce_catches_ValueError(self):
-        schema = {
-            'amount': {'coerce': int}
-        }
-        v = Validator(schema)
-        self.assertFalse(v.validate({'amount': 'not_a_number'}))
-        self.assertError('amount',
-                         errors.ERROR_COERCION_FAILED.format('amount'), v)
-
-    def test_coerce_catches_TypeError(self):
-        schema = {
-            'name': {'coerce': str.lower}
-        }
-        v = Validator(schema)
-        self.assertFalse(v.validate({'name': 1234}))
-        self.assertError('name',
-                         errors.ERROR_COERCION_FAILED.format('name'), v)
-
-    def test_coerce_unknown(self):
-        schema = {'foo': {'schema': {}, 'allow_unknown': {'coerce': int}}}
-        v = Validator(schema)
-        document = {'foo': {'bar': '0'}}
-        self.assertDictEqual(v.normalized(document), {'foo': {'bar': 0}})
-
-    def test_normalized(self):
-        schema = {'amount': {'coerce': int}}
-        v = Validator(schema)
-        self.assertEqual(v.normalized({'amount': '2'})['amount'], 2)
-
-    def test_rename(self):
-        document = {'foo': 0}
-        v = Validator({'foo': {'rename': 'bar'}})
-        self.assertDictEqual(v.normalized(document), {'bar': 0})
-
-    def test_rename_handler(self):
-        document = {'0': 'foo'}
-        v = Validator({}, allow_unknown={'rename_handler': int})
-        self.assertDictEqual(v.normalized(document), {0: 'foo'})
-
-    def test_purge_unknown(self):
-        v = Validator({'foo': {'type': 'string'}}, purge_unknown=True)
-        self.assertDictEqual(v.normalized({'bar': 'foo'}), {})
-        v.purge_unknown = False
-        self.assertDictEqual(v.normalized({'bar': 'foo'}), {'bar': 'foo'})
-        v.schema = {'foo': {'type': 'dict',
-                            'schema': {'foo': {'type': 'string'}},
-                            'purge_unknown': True}}
-        self.assertDictEqual(v.normalized({'foo': {'bar': ''}}), {'foo': {}})
-
-
-class DefinitionSchema(TestBase):
-    def test_validated_schema_cache(self):
-        v = Validator({'foozifix': {'coerce': int}})
-        cache_size = len(v.schema.valid_schemas)
-
-        v = Validator({'foozifix': {'type': 'integer'}})
-        cache_size += 1
-        self.assertEqual(len(v.schema.valid_schemas), cache_size)
-
-        v = Validator({'foozifix': {'coerce': int}})
-        self.assertEqual(len(v.schema.valid_schemas), cache_size)
-
-        max_cache_size = 200
-        self.assertLess(cache_size, max_cache_size,
-                        "There's an unexpected high amount of cached valid "
-                        "definition schemas. Unless you added further tests, "
-                        "there are good chances that something is wrong. "
-                        "If you added tests with new schemas, you can try to "
-                        "adjust the variable `max_cache_size` according to "
-                        "the added schemas.")
-
-    def bad_of_rules(self):
-        schema = {'foo': {'anyof': {'type': 'string'}}}
-        self.assertSchemaError({}, schema)
-
-    def test_repr(self):
-        v = Validator({'foo': {'type': 'string'}})
-        self.assertEqual(repr(v.schema), "{'foo': {'type': 'string'}}")
 
 
 # TODO remove on next major release
@@ -1389,11 +1154,9 @@ class TestDockerCompose(TestBase):
         self.validator = Validator()
 
     def test_environment(self):
-        schema = {'environment': {'oneof': [{'type': 'dict',
-                                             'valueschema': {'type': 'string',
-                                                             'nullable': True}},  # noqa
-                                            {'type': 'list',
-                                             'schema': {'type': 'string'}}]}}
+        schema = {'environment': {'type': ['dict', 'list'],
+                  'valueschema': {'type': 'string', 'nullable': True},
+                                  'schema': {'type': 'string'}}}
 
         document = {'environment': {'VARIABLE': 'FOO'}}
         self.assertSuccess(document, schema)
@@ -1406,20 +1169,13 @@ class TestDockerCompose(TestBase):
         ptrn_hostname = '[a-z0-9-]+'
         ptrn_ip = '(([0-9]{1,3})\.){3}[0-9]{1,3}'
         ptrn_extra_host = '^(' + ptrn_hostname + '|' + ptrn_domain + '):' + ptrn_ip + '$'  # noqa
-        schema = {'extra_hosts': {'oneof': [{'type': 'string',
-                                             'regex': ptrn_extra_host},
-
-                                             {'type': 'list', 'schema': {'type': 'string', 'regex': ptrn_extra_host}},  # noqa
-
-                                             {'type': 'list',
-                                              'schema': {'type': 'dict',
-                                                         'propertyschema': {'type': 'string', 'regex': '^(' + ptrn_hostname + '|' + ptrn_domain + ')$'},  # noqa
-                                                         'valueschema': {'type': 'string', 'regex': '^' + ptrn_ip + '$'}}},  # noqa
-
-                                             {'type': 'dict',
-                                              'propertyschema': {'type': 'string', 'regex': '^(' + ptrn_hostname + '|' + ptrn_domain + ')$'},  # noqa
-                                              'valueschema': {'type': 'string', 'regex': '^' + ptrn_ip + '$'}}  # noqa
-                                            ]}}
+        schema = {'extra_hosts': {'type': ['string', 'list', 'dict'],  # DRY?!?
+                                  'regex': ptrn_extra_host,  # string
+                                  'schema': {'type': ['string', 'dict'], 'regex': ptrn_extra_host,  # string in list  # noqa
+                                             'propertyschema': {'type': 'string', 'regex': '^(' + ptrn_hostname + '|' + ptrn_domain + ')$'},  # dict in list  # noqa
+                                             'valueschema': {'type': 'string', 'regex': '^' + ptrn_ip + '$'}},  # dict in list  # noqa
+                                  'propertyschema': {'type': 'string', 'regex': '^(' + ptrn_hostname + '|' + ptrn_domain + ')$'},  # dict  # noqa
+                                  'valueschema': {'type': 'string', 'regex': '^' + ptrn_ip + '$'}}}  # dict  # noqa
 
         document = {'extra_hosts': ["www.domain.net:127.0.0.1"]}
         self.assertSuccess(document, schema)

@@ -8,12 +8,12 @@
 
 """
 
-from .cerberus import Validator, DocumentError, SchemaError
+from .cerberus import Validator, ValidationError, SchemaError
 
-__version__ = "0.10"
+__version__ = "0.9.1"
 
 __all__ = [
     Validator.__name__,
-    DocumentError.__name__,
+    ValidationError.__name__,
     SchemaError.__name__
 ]

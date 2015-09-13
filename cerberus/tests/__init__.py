@@ -1,16 +1,8 @@
-from ..cerberus import Validator, SchemaError, DocumentError, errors
-
-import sys
-if sys.version_info >= (2, 7):
-    import unittest  # noqa
-else:
-    import unittest2 as unittest  # noqa
+import unittest
+from ..cerberus import Validator, SchemaError, ValidationError, errors
 
 
-TestCase = unittest.TestCase
-
-
-class TestBase(TestCase):
+class TestBase(unittest.TestCase):
 
     required_string_extension = {
         'a_required_string': {'type': 'string',
@@ -136,7 +128,7 @@ class TestBase(TestCase):
 
     def assertValidationError(self, document, schema=None, validator=None,
                               msg=None):
-        self.assertException(DocumentError, document, schema, validator, msg)
+        self.assertException(ValidationError, document, schema, validator, msg)
 
     def assertException(self, known_exception, document, schema=None,
                         validator=None, msg=None):
@@ -154,11 +146,10 @@ class TestBase(TestCase):
             validator = self.validator
         self.assertFalse(validator.validate(document, schema))
 
-    def assertSuccess(self, document, schema=None, validator=None,
-                      update=True):
+    def assertSuccess(self, document, schema=None, validator=None):
         if validator is None:
             validator = self.validator
-        self.assertTrue(validator.validate(document, schema, update),
+        self.assertTrue(validator.validate(document, schema, update=True),
                         validator.errors)
 
     def assertError(self, field, error, validator=None):

@@ -97,11 +97,13 @@ type
 ~~~~
 Data type allowed for the key value. Can be one of the following:
     * ``string``
+    * ``bytes``
     * ``integer``
     * ``float``
     * ``number`` (integer or float)
     * ``boolean``
     * ``datetime``
+    * ``date`
     * ``dict`` (formally ``collections.mapping``)
     * ``list`` (formally ``collections.sequence``, excluding strings)
     * ``set``
@@ -229,6 +231,15 @@ min, max
 ~~~~~~~~
 Minimum and maximum value allowed for ``integer``, ``float`` and ``number``
 types.
+
+minsize, maxsize
+~~~~~~~~~~~~~~~~
+Minimum and maximum size in bytes allowed for ``bytes`` types.
+
+before, after
+~~~~~~~~~~~~~~~~~~~~
+Minimum and maximum bound allowed for ``datetime`` and ``date`` types.
+
 
 .. versionchanged:: 0.7
    Added support for ``float`` and ``number`` types.

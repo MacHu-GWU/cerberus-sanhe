@@ -103,7 +103,7 @@ Data type allowed for the key value. Can be one of the following:
     * ``number`` (integer or float)
     * ``boolean``
     * ``datetime``
-    * ``date`
+    * ``date``
     * ``dict`` (formally ``collections.mapping``)
     * ``list`` (formally ``collections.sequence``, excluding strings)
     * ``set``

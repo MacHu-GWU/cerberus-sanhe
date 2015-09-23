@@ -1,5 +1,9 @@
-Welcome to Cerberus
-===================
+Welcome to Cerberus-Sanhe
+=========================
+
+this is folk project of https://github.com/nicolaiarocci/cerberus, Sanhe add 
+support for ``bytes``, ``date`` types, and add rules for ``maxsize``, ``minsize``, 
+``before``, ``after``.
 
 Cerberus is a lightweight and extensible data validation library for
 Python.

@@ -521,7 +521,7 @@ class Validator(object):
             self._error(field, errors.ERROR_BAD_TYPE.format("integer"))
 
     def _validate_type_float(self, field, value):
-        if not isinstance(value, float) and not isinstance(value, _int_types):
+        if not isinstance(value, float):
             self._error(field, errors.ERROR_BAD_TYPE.format("float"))
 
     def _validate_type_number(self, field, value):
